@@ -1,0 +1,323 @@
+<!DOCTYPE html><html><head><title>bunpou-blocks</title><link rel="manifest" href="manifest.json">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    body { background-color: #1a1a1a; color: #e0e0e0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; transition: background 0.3s; }
+    h1 { border-bottom: 2px solid #4a90e2; padding-bottom: 10px; color: #4a90e2; }
+    button { background: #333; color: #fff; border: 1px solid #555; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; transition: background 0.2s; }
+    button:hover { background: #555; }
+    
+    .block { 
+        padding: 12px 18px; 
+        background: #4a90e2; 
+        color: white; 
+        margin: 5px; 
+        cursor: pointer; 
+        display: inline-block; 
+        border-radius: 6px;
+        box-shadow: 0 4px 0 #2c3e50;
+        user-select: none;
+        font-size: 1.1em;
+        transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .block:active { 
+        transform: translateY(4px); 
+        box-shadow: 0 0 0 #2c3e50; 
+    }
+    
+    #sentence-area { 
+        border: 2px dashed #555; 
+        min-height: 100px; 
+        padding: 20px; 
+        margin-top: 20px; 
+        background: #222;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        transition: border-color 0.3s;
+    }
+    
+    #palette {
+        background: #252525;
+        padding: 20px;
+        border-radius: 8px;
+        min-height: 80px;
+        margin-top: 20px;
+    }
+
+    .level-badge {
+        background: #333;
+        padding: 5px 10px;
+        border-radius: 12px;
+        font-size: 0.8em;
+        margin-bottom: 10px;
+        display: inline-block;
+    }
+    
+    #feedback {
+        height: 30px;
+        font-weight: bold;
+        margin-top: 10px;
+        text-align: center;
+    }
+    .feedback-success { color: #2ecc71; }
+    .feedback-error { color: #e74c3c; }
+    
+    /* Confetti canvas */
+    #confetti {
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        pointer-events: none;
+        z-index: 999;
+    }
+</style>
+
+</head><body>
+<canvas id="confetti"></canvas>
+
+<div style="background:#111; padding:10px; border-bottom:1px solid #333; margin-bottom:20px;">
+    <a href="../index.html" style="color:#4a90e2; text-decoration:none; font-weight:bold;">⬅ Fleet Dashboard</a>
+</div>
+
+    <h1>bunpou-blocks</h1>
+    <div class="level-badge" id="level-display">Level 1: Likes</div>
+    <p id="hint-text" style="color: #aaa; font-size: 1.2em;">"I like Sushi."</p>
+
+<div id="sentence-area">
+    <span style="color: #555; font-style: italic; pointer-events: none;" id="placeholder-text">Tap blocks to move them here...</span>
+</div>
+
+<div id="palette">
+    <!-- Blocks injected by JS -->
+</div>
+
+<div id="feedback"></div>
+
+<div style="text-align:center; margin-top: 20px;">
+    <button onclick="checkSentence()" style="background: #27ae60; border-color: #219150;">Check Grammar</button>
+    <button onclick="resetLevel()" style="background: #c0392b; border-color: #a93226;">Reset</button>
+    <button onclick="nextLevel()" id="next-btn" style="display:none; background: #f39c12; color: #000; font-weight:bold;">Next Level ➡</button>
+</div>
+
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js');
+    });
+  }
+</script>
+
+    
+<script>
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playTone(freq, type='sine', duration=0.1) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+</script>
+
+<script>
+const levels = [
+    {
+        id: 1,
+        title: "Likes",
+        hint: "I like Sushi.",
+        words: ["Watashi", "wa", "Sushi", "ga", "Suki", "desu", "Kirai"],
+        solution: ["Watashi", "wa", "Sushi", "ga", "Suki", "desu"]
+    },
+    {
+        id: 2,
+        title: "Going Places",
+        hint: "I will go to Tokyo tomorrow.",
+        words: ["Watashi", "wa", "Ashita", "Tokyo", "ni", "ikimasu", "kaerimasu", "de"],
+        solution: ["Watashi", "wa", "Ashita", "Tokyo", "ni", "ikimasu"]
+    },
+    {
+        id: 3,
+        title: "Possession",
+        hint: "This is my pen.",
+        words: ["Kore", "wa", "Watashi", "no", "pen", "desu", "are", "sore"],
+        solution: ["Kore", "wa", "Watashi", "no", "pen", "desu"]
+    },
+    {
+        id: 4,
+        title: "Existence (Inanimate)",
+        hint: "There is a book on the desk.",
+        words: ["Tsukue", "no", "ue", "ni", "hon", "ga", "arimasu", "imasu", "wa"],
+        solution: ["Tsukue", "no", "ue", "ni", "hon", "ga", "arimasu"]
+    }
+];
+
+let currentLevel = 0;
+
+function createBlock(word, location) {
+    const el = document.createElement('div');
+    el.className = 'block';
+    el.innerText = word;
+    el.dataset.word = word;
+    
+    el.onclick = function() {
+        // Toggle location
+        const sentenceArea = document.getElementById('sentence-area');
+        const palette = document.getElementById('palette');
+        const placeholder = document.getElementById('placeholder-text');
+        
+        playTone(400, 'sine', 0.05);
+
+        if (this.parentNode === palette) {
+            sentenceArea.appendChild(this);
+            placeholder.style.display = 'none';
+        } else {
+            palette.appendChild(this);
+            if(sentenceArea.children.length <= 1) { // 1 because placeholder is there
+                placeholder.style.display = 'inline';
+            }
+        }
+        
+        // Clear feedback on move
+        document.getElementById('feedback').innerText = '';
+        document.getElementById('sentence-area').style.borderColor = '#555';
+    };
+    
+    return el;
+}
+
+function loadLevel() {
+    const lvl = levels[currentLevel];
+    document.getElementById('level-display').innerText = `Level ${lvl.id}: ${lvl.title}`;
+    document.getElementById('hint-text').innerText = `"${lvl.hint}"`;
+    document.getElementById('next-btn').style.display = 'none';
+    document.getElementById('feedback').innerText = '';
+    document.getElementById('sentence-area').style.borderColor = '#555';
+    
+    const sentenceArea = document.getElementById('sentence-area');
+    sentenceArea.innerHTML = '<span style="color: #555; font-style: italic; pointer-events: none;" id="placeholder-text">Tap blocks to move them here...</span>';
+    
+    const palette = document.getElementById('palette');
+    palette.innerHTML = '';
+    
+    // Shuffle words
+    const shuffled = [...lvl.words].sort(() => Math.random() - 0.5);
+    
+    shuffled.forEach(word => {
+        palette.appendChild(createBlock(word));
+    });
+}
+
+function resetLevel() {
+    loadLevel();
+}
+
+function nextLevel() {
+    if (currentLevel < levels.length - 1) {
+        currentLevel++;
+        loadLevel();
+    } else {
+        document.getElementById('feedback').innerText = "All levels complete! Great job!";
+        document.getElementById('feedback').className = "feedback-success";
+        confettiEffect();
+        currentLevel = 0;
+        setTimeout(loadLevel, 3000);
+    }
+}
+
+function checkSentence() {
+    const area = document.getElementById('sentence-area');
+    // Filter out placeholder
+    const blocks = Array.from(area.children).filter(el => el.classList.contains('block'));
+    const userWords = blocks.map(b => b.innerText);
+    
+    const lvl = levels[currentLevel];
+    const sol = lvl.solution;
+    
+    let isCorrect = true;
+    if (userWords.length !== sol.length) isCorrect = false;
+    else {
+        for(let i=0; i<sol.length; i++) {
+            if(userWords[i] !== sol[i]) isCorrect = false;
+        }
+    }
+    
+    const fb = document.getElementById('feedback');
+    
+    if(isCorrect) {
+        playTone(600, 'sine', 0.1); playTone(800, 'sine', 0.1); playTone(1000, 'sine', 0.2);
+        fb.innerText = "Correct! 🎉";
+        fb.className = "feedback-success";
+        area.style.borderColor = "#2ecc71";
+        document.getElementById('next-btn').style.display = 'inline-block';
+        confettiEffect();
+    } else {
+        playTone(200, 'sawtooth', 0.3);
+        fb.innerText = "Not quite right. Try again!";
+        fb.className = "feedback-error";
+        area.style.borderColor = "#e74c3c";
+        
+        // Shake animation
+        area.animate([
+            { transform: 'translateX(0px)' },
+            { transform: 'translateX(-10px)' },
+            { transform: 'translateX(10px)' },
+            { transform: 'translateX(0px)' }
+        ], { duration: 300 });
+    }
+}
+
+// Simple Confetti
+function confettiEffect() {
+    const canvas = document.getElementById('confetti');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    const particles = [];
+    for(let i=0; i<100; i++) {
+        particles.push({
+            x: canvas.width/2,
+            y: canvas.height/2,
+            vx: (Math.random()-0.5)*10,
+            vy: (Math.random()-0.5)*10,
+            c: `hsl(${Math.random()*360}, 100%, 50%)`,
+            life: 1.0
+        });
+    }
+    
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        let alive = false;
+        particles.forEach(p => {
+            if(p.life > 0) {
+                alive = true;
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2; // Gravity
+                p.life -= 0.02;
+                ctx.fillStyle = p.c;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x, p.y, 5, 5);
+            }
+        });
+        if(alive) requestAnimationFrame(animate);
+    }
+    animate();
+}
+
+// Start
+loadLevel();
+</script>
+
+<footer style="margin-top: 50px; padding: 20px; text-align: center; color: #555; border-top: 1px solid #333;">
+    <p>Fleet App Suite v0.7 | Mobile Ready</p>
+</footer>
+</body></html>
